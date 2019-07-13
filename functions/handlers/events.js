@@ -1,34 +1,23 @@
 const {db, admin} = require('../utils/admin')
 const geoFireX = require('geoFireX');
 const geo = geoFireX.init(admin)
-const events = geo.collection('events')
-const point = geo.point( 49.445425, 7.741736)
+const {GeoCollectionReference, GeoFirestore, GeoQuery, GeoQuerySnapshot} = require('geofirestore');
+const geofirestore = new GeoFirestore(db)
 
-exports.getAllEvents = (req, res) => {
-  const center = geo.point(49.435198, 7.742410);
-  const radius = 0.5;
-  const field = 'location'
-  console.log('data: ____________: ',   events.within(center, radius, field));
-
-  db
-  .collection('events')
-  .orderBy('createdAt', 'desc')
-  .get()
-  .then((data) => {
+exports.getAllEventsByLocation = (req, res) => {
+  geofirestore.collection('locations').near({ center: new admin.firestore.GeoPoint(req.body.location.lat, req.body.location.lng), radius: req.body.radius }).get().then(data => {
     let events = []
     data.forEach(doc => {
       events.push({
         eventId: doc.id,
-        description: doc.data().description,
-        createdAt: doc.data().createdAt,
-        location: doc.data().location,
-        name: doc.data().name,
-        tags: doc.data().tags
+        name: doc.data().data.name,
+        startTime: doc.data().data.startTime,
+        geoHash: doc.data().g,
+        geoPoint: doc.data().l
       })
     })
     return res.json(events);
-  })
-  .catch((err) => {
+  }).catch((err) => {
     console.log(err);
   })
 }
@@ -38,20 +27,27 @@ exports.postEvent = (req, res) => {
   const newEvent = {
     name: req.body.name,
     description: req.body.description,
+    g: geo.point(req.body.location.lat, req.body.location.lng).hash,
+    l: new admin.firestore.GeoPoint(req.body.location.lat, req.body.location.lng),
+    headCount: req.body.headCount,
+    tags: req.body.tags,
+    user: req.user.handle,
+    userImage: req.user.imgUrl,
+    startTime: req.body.startTime,
     createdAt: new Date().toISOString(),
-    location: {
-      geohash: geo.point(req.body.location.lat, req.body.location.lng).hash,
-      geopoint: new admin.firestore.GeoPoint(req.body.location.lat, req.body.location.lng),
-    },
-    tags: req.body.tags
-  };
-
-  console.log(newEvent);
+  }
 
   db.collection('events').add(newEvent).then((doc) => {
-    const resEvent = newEvent;
-    resEvent.eventId = doc.id;
-    return res.json({resEvent})
+    const resEvent = {};
+    resEvent.name = req.body.name;
+    resEvent.startTime = req.body.startTime;
+    return db.doc(`/locations/${doc.id}`).set({
+      g: newEvent.g,
+      l: newEvent.l,
+      data: resEvent
+    })
+  }).then((doc) => {
+    return res.json(newEvent)
   })
   .catch((err) => {
     console.log(err);
