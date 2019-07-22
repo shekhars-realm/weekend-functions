@@ -1,28 +1,67 @@
 const {db, admin} = require('../utils/admin')
-const geoFireX = require('geoFireX');
+const geoFireX = require('geofirex');
 const geo = geoFireX.init(admin)
 const {GeoCollectionReference, GeoFirestore, GeoQuery, GeoQuerySnapshot} = require('geofirestore');
 const geofirestore = new GeoFirestore(db)
+const BusBoy = require('busboy');
+const path = require('path');
+const os = require('os');
+const fs = require('fs')
+const { validateNewEvent } = require('../utils/validators')
 
 exports.getAllEventsByLocation = (req, res) => {
-  geofirestore.collection('locations').near({ center: new admin.firestore.GeoPoint(req.body.location.lat, req.body.location.lng), radius: req.body.radius }).get().then(data => {
-    let events = []
-    data.forEach(doc => {
-      events.push({
-        eventId: doc.id,
-        name: doc.data().data.name,
-        startTime: doc.data().data.startTime,
-        geoHash: doc.data().g,
-        geoPoint: doc.data().l
-      })
+
+  const filter = validateFilters(req);
+  console.log(filter);
+  const query = geofirestore.collection('locations')
+    .near({
+      center: new admin.firestore.GeoPoint(filter.location.lat, filter.location.lng),
+      radius: filter.radius
     })
-    return res.json(events);
+
+  query.get().then(data => {
+    const events = []
+     data.forEach(doc => {
+      if(doc.data().data.startTime >= filter.startTime) {
+        if(filter.searchText) {
+          if(doc.data().data.name.includes(filter.searchText) || doc.data().data.description.includes(filter.searchText)) {
+            events.push({
+              eventId: doc.id,
+              name: doc.data().data.name,
+              startTime: doc.data().data.startTime,
+              endTime: doc.data().data.endTime,
+              description: doc.data().data.description,
+              primaryTag: doc.data().data.primaryTag,
+              geoHash: doc.data().g,
+              geoPoint: doc.data().l
+            })
+          }
+        } else {
+          events.push({
+            eventId: doc.id,
+            name: doc.data().data.name,
+            startTime: doc.data().data.startTime,
+            endTime: doc.data().data.endTime,
+            description: doc.data().data.description,
+            primaryTag: doc.data().data.primaryTag,
+            geoHash: doc.data().g,
+            geoPoint: doc.data().l
+          })
+        }
+      }
+    })
+      return res.json(events);
   }).catch((err) => {
     console.log(err);
+    return res.status(500).json({error: err.code})
   })
 }
 
 exports.postEvent = (req, res) => {
+
+  const {valid, errors} = validateNewEvent(req)
+
+  if(!valid) return res.status(400).json(errors)
 
   const newEvent = {
     name: req.body.name,
@@ -39,10 +78,16 @@ exports.postEvent = (req, res) => {
     createdAt: new Date().toISOString(),
   }
 
+
+
   db.collection('events').add(newEvent).then((doc) => {
-    const resEvent = {};
-    resEvent.name = req.body.name;
-    resEvent.startTime = req.body.startTime;
+    const resEvent = {
+      name: req.body.name,
+      description: req.body.description,
+      primaryTag: req.body.tags[0],
+      startTime: req.body.startTime,
+      endTime: req.body.endTime,
+    };
     newEvent.eventId = doc.id;
     return db.doc(`/locations/${doc.id}`).set({
       g: newEvent.geoHash,
@@ -121,4 +166,41 @@ exports.leaveEvent = (req, res) => {
     console.log(err);
     return res.status(500).json({error: err.code});
   })
+}
+
+exports.uploadEventImage = (req, res) => {
+
+  const busboy = new BusBoy({headers: req.headers});
+
+  let imageFileName;
+  let imageToBeUploaded;
+
+  busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
+    if(mimetype !== 'image/jpeg' && mimetype !== 'image/png') {
+      return res.status(400).json({error: 'Wrong file type submitted'})
+    }
+    const imageExtension = filename.split('.')[filename.split('.').length - 1];
+    imageFileName = `${Math.round(Math.random()*1000000000)}.${imageExtension}`;
+    const filePath = path.join(os.tmpdir(), imageFileName);
+    imageToBeUploaded = {filePath, mimetype};
+    file.pipe(fs.createWriteStream(filePath));
+  });
+  busboy.on('finish', () => {
+    admin.storage().bucket().upload(imageToBeUploaded.filePath, {
+      resumable: false,
+      metadata: {
+        metadata: {
+          contentType: imageToBeUploaded.mimetype
+        }
+      }
+    }).then(() => {
+      const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${firebaseConfig.storageBucket}/o/${imageFileName}?alt=media`;
+      return db.doc(`/users/${req.user.handle}`).update({imageUrl: imageUrl })
+    }).then(() => {
+      return res.json({message: 'Image uploaded successfully'})
+    }).catch(err => {
+      return res.status(500).json({error: err.code})
+    })
+  })
+  busboy.end(req.rawBody);
 }

@@ -53,3 +53,41 @@ exports.reduceUserDetails = (data) => {
     return userDetails
   }
 }
+
+exports.validateNewEvent = (req) => {
+  console.log('new event: ', req.body);
+  let errors = {}
+  if(isEmpty(req.body.name)) {
+    errors.name = 'Event name cannot be empty!'
+  }
+  if(new Date(req.body.startTime).getTime() < new Date().getTime() + (3600000*2) ) {
+    errors.startTime = 'Event needs to start atleast 2 hours from now!'
+  }
+  if((new Date(req.body.endTime).getTime() - new Date(req.body.startTime).getTime()) < 1800000) {
+    errors.endTime = 'Event should last atleast 30 minutes!'
+  }
+  if(Object.keys(req.body.location).length === 0) {
+    errors.location = 'Please add a meet uo point!'
+  }
+  if(req.body.tags.length === 0) {
+    errors.tags = 'Cannot leave empty. Add tags to make your event easy to find!'
+  }
+  return {
+    errors,
+    valid: Object.keys(errors).length === 0 ? true : false
+  }
+}
+
+validateFilters = (req) => {
+  let filter = {}
+  if(Object.keys(req.body.location).length !== 0) {
+    filter.location = req.body.location;
+  }
+  if(!isEmpty(req.body.searchText)) {
+    filter.searchText = req.body.searchText;
+  }
+  filter.radius = req.body.radius;
+  filter.startTime = req.body.startTime;
+
+  return filter;
+}

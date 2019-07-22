@@ -17,8 +17,6 @@ exports.signup = (req, res) => {
 
   const {valid, errors} = validateSignUpData(newUser)
 
-  console.log(errors);
-
   if(!valid) return res.status(400).json(errors)
 
   const noImg = 'no-img.png'
