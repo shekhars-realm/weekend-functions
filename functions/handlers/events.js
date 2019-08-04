@@ -168,6 +168,32 @@ exports.leaveEvent = (req, res) => {
   })
 }
 
+exports.getEvent = (req, res) => {
+  db.collection('events').doc(`${req.params.eventId}`).get().then((doc) => {
+    if(doc.exists) {
+      return res.json({event: doc.data()})
+    } else {
+      return res.status(400).json({error: 'Event not found'});
+    }
+  }).catch((err) => {
+    return res.status(500).json({error: err.code})
+  })
+}
+
+exports.getUserEvent = (req, res) => {
+  db.collection('events').where('user', '==', req.params.handle).orderBy('createdAt', 'desc')
+  .get().then((data) => {
+    let events = []
+    data.forEach(doc => {
+      events.push(doc.data())
+    })
+    return res.json({events})
+  }).catch((err) => {
+    console.log(err);
+    return res.status(500).json({error: err.code});
+  })
+}
+
 exports.uploadEventImage = (req, res) => {
 
   const busboy = new BusBoy({headers: req.headers});

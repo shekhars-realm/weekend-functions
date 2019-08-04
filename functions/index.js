@@ -9,12 +9,14 @@ const FBAuth = require('./utils/fbAuth')
 const cors = require('cors');
 app.use(cors());
 
-const {getAllEventsByLocation, postEvent, joinEvent, leaveEvent} = require('./handlers/events');
+const {getAllEventsByLocation, getEvent, getUserEvent, postEvent, joinEvent, leaveEvent} = require('./handlers/events');
 const {signup, login, uploadImage, addUserDetails,getAuthenticatedUser, getUserDetails, markNotificationRead} = require('./handlers/users');
 
 //shout routes
 app.post('/events', getAllEventsByLocation);
 app.post('/event', FBAuth, postEvent);
+app.get('/event/:eventId', getEvent);
+app.get('/events/:handle', getUserEvent);
 app.get('/event/:eventId/join', FBAuth, joinEvent);
 app.get('/event/:eventId/leave', FBAuth, leaveEvent);
 
