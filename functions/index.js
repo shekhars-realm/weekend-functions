@@ -15,8 +15,8 @@ const {signup, login, uploadImage, addUserDetails,getAuthenticatedUser, getUserD
 //shout routes
 app.post('/events', getAllEventsByLocation);
 app.post('/event', FBAuth, postEvent);
-app.get('/event/:eventId', getEvent);
-app.get('/events/:handle', getUserEvent);
+app.get('/event/:eventId', FBAuth, getEvent);
+app.get('/events/:handle', FBAuth, getUserEvent);
 app.get('/event/:eventId/join', FBAuth, joinEvent);
 app.get('/event/:eventId/leave', FBAuth, leaveEvent);
 

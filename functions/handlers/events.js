@@ -140,9 +140,9 @@ exports.joinEvent = (req, res) => {
 }
 
 exports.leaveEvent = (req, res) => {
+  const eventDoc = {};
   db.doc(`/events/${req.params.eventId}`).get().then((doc) => {
     if(doc.exists){
-      const eventDoc = {};
       eventDoc.startTime = doc.data().startTime;
       eventDoc.endTime = doc.data().endTime;
       eventDoc.name = doc.data().name;
@@ -171,7 +171,16 @@ exports.leaveEvent = (req, res) => {
 exports.getEvent = (req, res) => {
   db.collection('events').doc(`${req.params.eventId}`).get().then((doc) => {
     if(doc.exists) {
-      return res.json({event: doc.data()})
+      const event = doc.data()
+      event.eventId = doc.id;
+      event.participants.forEach(participant => {
+        if(participant.user === req.user.handle) {
+          event.joined = true
+        } else {
+          event.joined = false
+        }
+      })
+      return res.json({event})
     } else {
       return res.status(400).json({error: 'Event not found'});
     }
