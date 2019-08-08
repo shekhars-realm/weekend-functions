@@ -168,6 +168,18 @@ exports.leaveEvent = (req, res) => {
   })
 }
 
+exports.deleteEvent = (req, res) => {
+  db.collection('events').doc(`${req.params.eventId}`).get().then(doc => {
+    if(doc.exists) {
+      if(doc.data().participants.length > 0) {
+        doc.data().participants.map(participant => {
+
+        })
+      }
+    }
+  })
+}
+
 exports.getEvent = (req, res) => {
   db.collection('events').doc(`${req.params.eventId}`).get().then((doc) => {
     if(doc.exists) {
