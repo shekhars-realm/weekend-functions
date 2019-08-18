@@ -1,3 +1,5 @@
+const moment = require('moment');
+
 const isEmpty = (string) => {
   if(string.trim() === '') return true
   else return false
@@ -57,6 +59,18 @@ exports.reduceUserDetails = (data) => {
 exports.validateNewEvent = (req) => {
   console.log('new event: ', req.body);
   let errors = {}
+  req.user.schedule.map(event => {
+    if(
+      moment(req.body.startTime).isBetween(moment(event.startTime), moment(event.endTime))
+      ||
+      moment(req.body.endTime).isBetween(moment(event.startTime), moment(event.endTime))
+      ||
+      moment(event.startTime).isBetween(moment(req.body.startTime), moment(req.body.endTime))
+    ) {
+      errors.overlapped = 'Clear your schedule for this time!'
+      return errors
+    }
+  })
   if(isEmpty(req.body.name)) {
     errors.name = 'Event name cannot be empty!'
   }
@@ -90,4 +104,34 @@ validateFilters = (req) => {
   filter.startTime = req.body.startTime;
 
   return filter;
+}
+
+exports.validateJoinEvent = (req, timeObj) => {
+  let errors = {}
+  req.user.schedule.map(event => {
+    if(
+      moment(timeObj.startTime).isBetween(moment(event.startTime), moment(event.endTime))
+      ||
+      moment(timeObj.endTime).isBetween(moment(event.startTime), moment(event.endTime))
+      ||
+      moment(event.startTime).isBetween(moment(timeObj.startTime), moment(timeObj.endTime))
+    ) {
+      errors.overlapped = 'Clear your schedule for this time!'
+    }
+  })
+  return {
+    errors,
+    valid: Object.keys(errors).length === 0 ? true : false
+  }
+}
+
+exports.validateRating = (req) => {
+  let rating = {}
+  if(req.body.fun) rating.fun = req.body.fun;
+  if(req.body.interaction) rating.interaction = req.body.interaction;
+  if(req.body.wellPlanned) rating.wellPlanned = req.body.wellPlanned;
+  if(req.body.suggestion) rating.suggestion = req.body.suggestion;
+  rating.createdAt = new Date().toISOString();
+  rating.user = req.user.handle;
+  return rating
 }

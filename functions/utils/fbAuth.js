@@ -18,6 +18,7 @@ module.exports = (req, res, next) => {
   }).then(data => {
     req.user.handle = data.docs[0].data().handle;
     req.user.imgUrl = data.docs[0].data().imageUrl;
+    req.user.schedule = data.docs[0].data().schedule;
     return next();
   }).catch(err => {
     console.log(err);

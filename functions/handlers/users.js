@@ -154,11 +154,45 @@ exports.getAuthenticatedUser = (req, res) => {
     if(doc.exists) {
       userData.credentials = doc.data();
     }
+    return db.collection('notifications').where('recipient', '==', req.user.handle)
+    .orderBy('createdAt', 'desc').limit(10).get();
+  }).then(data => {
+    userData.notifications = [];
+    data.forEach(doc => {
+      userData.notifications.push({
+        recipient: doc.data().recipient,
+        sender: doc.data().sender,
+        shoutId: doc.data().shoutId,
+        senderImage: doc.data().senderImage,
+        createdAt: doc.data().createdAt,
+        eventId: doc.data().eventId,
+        forumId: doc.data().forumId,
+        read: doc.data().read,
+        type: doc.data().type,
+        notificationId: doc.id,
+        startTime: doc.data().startTime,
+        eventName: doc.data().eventName
+      })
+    })
     console.log('userData: ', userData);
     return res.json(userData)
   }).catch((err) => {
     console.log(err);
     return res.status(500).json({error: err.code})
+  })
+}
+
+exports.markNotificationRead = (req, res) => {
+  let batch = db.batch();
+  req.body.forEach(notificationId => {
+    const notification = db.doc(`/notifications/${notificationId}`);
+    batch.update(notification, {read: true});
+  });
+  batch.commit().then(() => {
+    return res.json({message: 'Notifications marked as read'});
+  }).catch((err) => {
+    console.log(err);
+    return res.status(500).json({error: err.code});
   })
 }
 

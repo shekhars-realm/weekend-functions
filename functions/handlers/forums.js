@@ -1,4 +1,4 @@
-const {db} = require('../utils/admin');
+const {db, admin} = require('../utils/admin');
 
 exports.addToForum = (req, res) => {
   const newPost = {
@@ -6,7 +6,8 @@ exports.addToForum = (req, res) => {
     createdAt: new Date().toISOString(),
     user: req.user.handle,
     userImage: req.user.imgUrl,
-    eventId: req.body.eventId
+    eventId: req.body.eventId,
+    replyCount: 0
   }
   db.collection('forum').add(newPost).then(doc => {
     return res.json({
@@ -31,6 +32,7 @@ exports.getForums = (req, res) => {
         user: doc.data().user,
         userImage: doc.data().userImage,
         createdAt: doc.data().createdAt,
+        eventId: doc.data().eventId,
         replyCount: doc.data().replyCount
       })
     })
@@ -47,12 +49,14 @@ exports.postReply = (req, res) => {
     createdAt: new Date().toISOString(),
     user: req.user.handle,
     userImage: req.user.imgUrl,
-    eventId: req.body.forumId
+    forumId: req.body.forumId
   }
   db.collection('replies').add(reply).then(doc => {
-    return res.json({
-      message: 'document added with id '+doc.id
+    return db.collection('forum').doc(`${req.body.forumId}`).update({
+      replyCount: admin.firestore.FieldValue.increment(1)
     })
+  }).then(doc => {
+    return res.json({message: 'reply added successfully!'})
   }).catch(err => {
     console.log(err);
     return res.status(500).json({

@@ -1,4 +1,5 @@
 const functions = require('firebase-functions');
+const CronJob = require('cron').CronJob;
 
 const app = require('express')();
 
@@ -19,7 +20,9 @@ const {
   postEvent,
   joinEvent,
   leaveEvent,
-  deleteEvent
+  deleteEvent,
+  rateEvent,
+  getParticipants
 } = require('./handlers/events');
 const {
   addToForum,
@@ -46,8 +49,9 @@ app.get('/event/:eventId', FBAuth, getEvent);
 app.get('/events/:handle', FBAuth, getUserEvent);
 app.get('/event/:eventId/join', FBAuth, joinEvent);
 app.get('/event/:eventId/leave', FBAuth, leaveEvent);
-app.get('/event/:eventId/delete', FBAuth, deleteEvent);
-
+app.delete('/event/:eventId', FBAuth, deleteEvent);
+app.post('/event/rating', FBAuth, rateEvent);
+app.get('/getParticipants/:eventId', getParticipants)
 //forum routes
 app.post('/forums/add', FBAuth, addToForum);
 app.get('/forums/:eventId', FBAuth, getForums);
@@ -112,6 +116,14 @@ exports.onUserImageChange = functions.region('europe-west2').firestore.document(
           userImage: change.after.data().imageUrl
         })
       })
+      return db.collection('notifications').where('sender', '==', `${change.before.data().handle}`).get()
+    }).then(data => {
+      data.forEach(doc => {
+        let docRef = db.doc(`/sender/${doc.id}`);
+        batch.update(docRef, {
+          senderImage: change.after.data().imageUrl
+        })
+      })
       console.log('success');
       batch.commit();
     }).catch(err => {
@@ -131,7 +143,8 @@ exports.createNotificationOnForumPost = functions.region('europe-west2').firesto
         senderImage: snapshot.data().userImage,
         read: false,
         type: 'forumPost',
-        forumId: doc.id
+        forumId: snapshot.id,
+        eventId: snapshot.data().eventId
       })
     }
   }).catch(err => {
@@ -150,10 +163,44 @@ exports.createNotificationOnForumReply = functions.region('europe-west2').firest
         senderImage: snapshot.data().userImage,
         read: false,
         type: 'forumReply',
-        forumId: doc.id
+        forumId: doc.id,
+        eventId: doc.data().eventId
       })
     }
   }).catch(err => {
     console.log('notification on forum reply error: ',err);
   })
+})
+
+exports.formDeleteNotification = functions.region('europe-west2').firestore.document('forum/{id}')
+  .onDelete((snapshot) => {
+    return db.doc(`/notifications/${snapshot.id}`).delete().catch((err) => {
+      console.log(err);
+    })
+})
+
+exports.replyDeleteNotificaiton = functions.region('europe-west2').firestore.document('replies/{id}')
+  .onDelete((snapshot) => {
+    return db.doc(`/notifications/${snapshot.id}`).delete().catch((err) => {
+      console.log(err);
+    })
+})
+
+exports.eventDeleteNotification = functions.region('europe-west2').firestore.document('events/{id}').onDelete(snapshot => {
+  let batch = db.batch();
+  snapshot.data().participants.forEach(participant => {
+    let notiRef = db.collection('notifications').doc()
+    let notiObj = {
+      createdAt: new Date().toISOString(),
+      recipient: participant.user,
+      sender: snapshot.data().user,
+      senderImage: snapshot.data().userImage,
+      read: false,
+      startTime: snapshot.data().startTime,
+      eventName: snapshot.data().name,
+      type: 'eventDeleted'
+    }
+    batch.set(notiRef, notiObj)
+  })
+  batch.commit()
 })

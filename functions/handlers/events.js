@@ -7,7 +7,8 @@ const BusBoy = require('busboy');
 const path = require('path');
 const os = require('os');
 const fs = require('fs')
-const { validateNewEvent } = require('../utils/validators')
+const { validateNewEvent, validateJoinEvent, validateRating } = require('../utils/validators')
+const moment = require('moment');
 
 exports.getAllEventsByLocation = (req, res) => {
 
@@ -77,9 +78,6 @@ exports.postEvent = (req, res) => {
     participants: [],
     createdAt: new Date().toISOString(),
   }
-
-
-
   db.collection('events').add(newEvent).then((doc) => {
     const resEvent = {
       name: req.body.name,
@@ -89,12 +87,26 @@ exports.postEvent = (req, res) => {
       endTime: req.body.endTime,
     };
     newEvent.eventId = doc.id;
+    db.doc(`/ratings/${doc.id}`).set({
+      ratings: [],
+      user: req.user.handle
+    });
     return db.doc(`/locations/${doc.id}`).set({
       g: newEvent.geoHash,
       l: newEvent.geoPoint,
       data: resEvent
     })
   }).then((doc) => {
+    const eventDoc={
+      eventId: newEvent.eventId,
+      startTime: newEvent.startTime,
+      name: newEvent.name,
+      endTime: newEvent.endTime
+    }
+    return db.collection('users').doc(`${req.user.handle}`).update({
+            schedule: admin.firestore.FieldValue.arrayUnion({...eventDoc})
+          })
+  }).then(data => {
     return res.json(newEvent)
   })
   .catch((err) => {
@@ -107,6 +119,14 @@ exports.joinEvent = (req, res) => {
   const eventDoc = {}
   db.doc(`/events/${req.params.eventId}`).get().then((doc) => {
     if(doc.exists){
+      const {valid, errors} = validateJoinEvent(req, {
+        startTime: doc.data().startTime,
+        endTime: doc.data().endTime
+      })
+
+      if(!valid) return res.status(405).json({
+        errors: 'Clear your schedule for this time!'
+      })
       eventDoc.startTime = doc.data().startTime;
       eventDoc.endTime = doc.data().endTime;
       eventDoc.name = doc.data().name;
@@ -143,6 +163,7 @@ exports.leaveEvent = (req, res) => {
   const eventDoc = {};
   db.doc(`/events/${req.params.eventId}`).get().then((doc) => {
     if(doc.exists){
+
       eventDoc.startTime = doc.data().startTime;
       eventDoc.endTime = doc.data().endTime;
       eventDoc.name = doc.data().name;
@@ -169,14 +190,57 @@ exports.leaveEvent = (req, res) => {
 }
 
 exports.deleteEvent = (req, res) => {
+  let batch = db.batch();
+  let event = {}
   db.collection('events').doc(`${req.params.eventId}`).get().then(doc => {
     if(doc.exists) {
+      console.log('event doc: ', doc.data());
+      event = doc.data()
+      batch.update(db.doc(`/users/${doc.data().user}`), {
+        schedule: admin.firestore.FieldValue.arrayRemove({
+          endTime: doc.data().endTime,
+          startTime: doc.data().startTime,
+          name: doc.data().name,
+          eventId: doc.id
+        })
+      })
+      console.log('after delete user: ', batch);
       if(doc.data().participants.length > 0) {
-        doc.data().participants.map(participant => {
-
+        console.log('creating participant batch');
+        doc.data().participants.forEach(participant => {
+          let docRef = db.doc(`/users/${participant.user}`)
+          batch.update(docRef, {
+            schedule: admin.firestore.FieldValue.arrayRemove({
+              endTime: doc.data().endTime,
+              startTime: doc.data().startTime,
+              name: doc.data().name,
+              eventId: doc.id
+            })
+          })
         })
       }
+      batch.delete(db.doc(`/events/${doc.id}`))
+      batch.delete(db.doc(`/locations/${doc.id}`))
+      console.log('batched: ', batch);
+      return db.collection('forum').where('eventId', '==', doc.id).get()
+    } else {
+      return res.status(404).json({
+        error: 'Event not found!'
+      })
     }
+  }).then(data => {
+    console.log('forum data: ', data);
+    data.forEach(doc => {
+      let forumRef = db.doc(`/forum/${doc.id}`)
+      batch.delete(forumRef)
+    })
+    return batch.commit()
+  }).then(result => {
+    console.log('success in deleting event!');
+    return res.json({message: 'Event deleted'})
+  }).catch(err => {
+    console.log('in event delete: ', err);
+    return res.json({error: err.code})
   })
 }
 
@@ -250,4 +314,16 @@ exports.uploadEventImage = (req, res) => {
     })
   })
   busboy.end(req.rawBody);
+}
+
+exports.rateEvent = (req, res) => {
+  let rating = validateRating(req);
+  return db.doc(`/ratings/${req.body.eventId}`).update({
+    ratings: admin.firestore.FieldValue.arrayUnion(rating)
+  }).then(res => {
+    return res.json({message: 'Your feedback has been noted!'})
+  }).catch(err => {
+    console.log(err);
+    return res.status(500).json({error: err.code});
+  })
 }
