@@ -22,7 +22,7 @@ const {
   leaveEvent,
   deleteEvent,
   rateEvent,
-  getParticipants
+  changeParticipantStatus
 } = require('./handlers/events');
 const {
   addToForum,
@@ -51,7 +51,7 @@ app.get('/event/:eventId/join', FBAuth, joinEvent);
 app.get('/event/:eventId/leave', FBAuth, leaveEvent);
 app.delete('/event/:eventId', FBAuth, deleteEvent);
 app.post('/event/rating', FBAuth, rateEvent);
-app.get('/getParticipants/:eventId', getParticipants)
+app.post('/event/changeParticipantStatus', FBAuth, changeParticipantStatus)
 //forum routes
 app.post('/forums/add', FBAuth, addToForum);
 app.get('/forums/:eventId', FBAuth, getForums);

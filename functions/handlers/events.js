@@ -77,6 +77,7 @@ exports.postEvent = (req, res) => {
     endTime: req.body.endTime,
     participants: [],
     createdAt: new Date().toISOString(),
+    status: 'upcoming'
   }
   db.collection('events').add(newEvent).then((doc) => {
     const resEvent = {
@@ -141,7 +142,7 @@ exports.joinEvent = (req, res) => {
       return db.collection('events').doc(`${req.params.eventId}`).update({
           participants: admin.firestore.FieldValue.arrayUnion({
             user: req.user.handle,
-            userImage: req.user.imgUrl,
+            userImage: req.user.imgUrl
           })
         })
     } else {
@@ -320,10 +321,60 @@ exports.rateEvent = (req, res) => {
   let rating = validateRating(req);
   return db.doc(`/ratings/${req.body.eventId}`).update({
     ratings: admin.firestore.FieldValue.arrayUnion(rating)
-  }).then(res => {
+  }).then(result => {
+    return db.collection('notifications').doc(`${req.body.notificationId}`).delete()
+  }).then(result => {
     return res.json({message: 'Your feedback has been noted!'})
   }).catch(err => {
     console.log(err);
     return res.status(500).json({error: err.code});
   })
+}
+
+exports.changeParticipantStatus = (req, res) => {
+ let eventDoc = {};
+ let batch = db.batch();
+ db.collection('events').doc(`${req.body.eventId}`).get().then(doc => {
+   if(doc.exists) {
+     eventDoc = doc.data();
+     let changeEventStatus = eventDoc.participants.length > 0 && eventDoc.participants.every(participant => {
+       return participant.status !== undefined
+     })
+     let eventRef = db.collection('events').doc(`${doc.id}`);
+     batch.update(eventRef, {
+       participants: admin.firestore.FieldValue.arrayRemove({
+         user: req.body.user,
+         userImage: req.body.userImage
+       })
+     })
+     batch.update(eventRef, {
+       participants: admin.firestore.FieldValue.arrayUnion({
+         user: req.body.user,
+         userImage: req.body.userImage,
+         status: req.body.status
+       })
+     })
+     let notiRef = db.collection('notifications').doc();
+     let notiObj = {
+       createdAt: new Date().toISOString(),
+       recipient: req.body.user,
+       sender: eventDoc.user,
+       senderImage: eventDoc.userImage,
+       read: false,
+       startTime: eventDoc.startTime,
+       eventName: eventDoc.name,
+       eventId: doc.id,
+       type: req.body.status === 'absent' ? 'markedAsAbsent' : 'markedAsPresent'
+     }
+     batch.set(notiRef, notiObj);
+     return batch.commit();
+   } else {
+     return res.status(400).json({error: 'Event not found!'})
+   }
+ }).then(result => {
+   return res.json({message: 'Participant notified'})
+ }).catch(err => {
+   console.log(err);
+   return res.status(500).json({error: err.code});
+ })
 }
